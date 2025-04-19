@@ -4,7 +4,7 @@ import pytest
 from Crypto.Cipher import AES as PyAES
 
 # Load DLL
-dll_path = r"D:\secure_sys\rijndael starter code\rijndael.dll"
+dll_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../rijndael.dll'))
 lib = ctypes.CDLL(dll_path)
 
 # Set function signatures
