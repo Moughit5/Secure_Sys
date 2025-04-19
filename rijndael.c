@@ -1,9 +1,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include "rijndael.h"
 
 #define BLOCK_SIZE 16
+#define NUM_ROUNDS 10
+
+// Function declarations
+void sub_bytes(unsigned char *block);
+void invert_sub_bytes(unsigned char *block);
+void shift_rows(unsigned char *block);
+void invert_shift_rows(unsigned char *block);
+void mix_columns(unsigned char *block);
+void invert_mix_columns(unsigned char *block);
+void add_round_key(unsigned char *block, unsigned char *key);
+unsigned char* expand_key(unsigned char *cipher_key);
+unsigned char* aes_encrypt_block(unsigned char *plaintext, unsigned char *key);
+unsigned char* aes_decrypt_block(unsigned char *ciphertext, unsigned char *key);
 
 // S-Box
 static const unsigned char sbox[256] = {
@@ -46,151 +58,230 @@ static const unsigned char inv_sbox[256] = {
 };
 
 
+// Rcon
 static const unsigned char Rcon[11] = {
-  0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36
+    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36
 };
 
-// Fonction pour multiplier dans GF(2^8)
+// Multiplication in GF(2^8)
 unsigned char gf_mul(unsigned char a, unsigned char b) {
-  unsigned char p = 0;
-  for (int i = 0; i < 8; ++i) {
-      if (b & 1)
-          p ^= a;
-      unsigned char hi_bit_set = a & 0x80;
-      a <<= 1;
-      if (hi_bit_set)
-          a ^= 0x1b;
-      b >>= 1;
-  }
-  return p;
+    unsigned char p = 0;
+    for (int i = 0; i < 8; ++i) {
+        if (b & 1)
+            p ^= a;
+        unsigned char hi_bit_set = a & 0x80;
+        a <<= 1;
+        if (hi_bit_set)
+            a ^= 0x1b;
+        b >>= 1;
+    }
+    return p;
 }
 
-// xtime utilisé pour mix_columns
-unsigned char xtime(unsigned char x) {
-  return (x << 1) ^ ((x >> 7) * 0x1b);
-}
-
-// Extension de clé
+// Key Expansion
 unsigned char* expand_key(unsigned char *cipher_key) {
-  unsigned char *round_keys = malloc(176);
-  memcpy(round_keys, cipher_key, 16);
-  unsigned char temp[4];
-  int i = 4;
+    unsigned char *round_keys = malloc(176); // 11*16 = 176 bytes
+    memcpy(round_keys, cipher_key, 16);
 
-  while (i < 44) {
-      memcpy(temp, round_keys + 4 * (i - 1), 4);
-      if (i % 4 == 0) {
-          unsigned char t = temp[0];
-          temp[0] = sbox[temp[1]] ^ Rcon[i / 4];
-          temp[1] = sbox[temp[2]];
-          temp[2] = sbox[temp[3]];
-          temp[3] = sbox[t];
-      }
-      for (int j = 0; j < 4; ++j) {
-          round_keys[4 * i + j] = round_keys[4 * (i - 4) + j] ^ temp[j];
-      }
-      i++;
-  }
-  return round_keys;
+    unsigned char temp[4];
+    int i = 4;
+
+    while (i < 44) {
+        memcpy(temp, round_keys + 4 * (i - 1), 4);
+
+        if (i % 4 == 0) {
+            unsigned char t = temp[0];
+            temp[0] = sbox[temp[1]] ^ Rcon[i / 4];
+            temp[1] = sbox[temp[2]];
+            temp[2] = sbox[temp[3]];
+            temp[3] = sbox[t];
+        }
+
+        for (int j = 0; j < 4; ++j) {
+            round_keys[4 * i + j] = round_keys[4 * (i - 4) + j] ^ temp[j];
+        }
+        i++;
+    }
+    return round_keys;
 }
 
-// SubBytes / Inv
+// SubBytes
 void sub_bytes(unsigned char *block) {
-  for (int i = 0; i < BLOCK_SIZE; ++i)
-      block[i] = sbox[block[i]];
+    for (int i = 0; i < BLOCK_SIZE; ++i)
+        block[i] = sbox[block[i]];
 }
+
+// Inverse SubBytes
 void invert_sub_bytes(unsigned char *block) {
-  for (int i = 0; i < BLOCK_SIZE; ++i)
-      block[i] = inv_sbox[block[i]];
+    for (int i = 0; i < BLOCK_SIZE; ++i)
+        block[i] = inv_sbox[block[i]];
 }
 
-// ShiftRows / Inv
-void shift_rows(unsigned char *block) {
-  unsigned char tmp[BLOCK_SIZE];
-  memcpy(tmp, block, BLOCK_SIZE);
-  for (int i = 0; i < 4; ++i)
-      for (int j = 0; j < 4; ++j)
-          block[i * 4 + j] = tmp[i * 4 + (j + i) % 4];
-}
-void invert_shift_rows(unsigned char *block) {
-  unsigned char tmp[BLOCK_SIZE];
-  memcpy(tmp, block, BLOCK_SIZE);
-  for (int i = 0; i < 4; ++i)
-      for (int j = 0; j < 4; ++j)
-          block[i * 4 + j] = tmp[i * 4 + (j - i + 4) % 4];
-}
+// ShiftRows
+void shift_rows(unsigned char *state) {
+    unsigned char tmp[BLOCK_SIZE];
+    // Row 0 (no shift)
+    tmp[0]  = state[0];
+    tmp[4]  = state[4];
+    tmp[8]  = state[8];
+    tmp[12] = state[12];
 
-// MixColumns / Inv (corrigé avec multiplications dans GF(2^8))
-void mix_columns(unsigned char *block) {
-  for (int i = 0; i < 4; ++i) {
-      int col = i * 4;
-      unsigned char a = block[col];
-      unsigned char b = block[col + 1];
-      unsigned char c = block[col + 2];
-      unsigned char d = block[col + 3];
+    // Row 1 (shift left by 1)
+    tmp[1]  = state[5];
+    tmp[5]  = state[9];
+    tmp[9]  = state[13];
+    tmp[13] = state[1];
 
-      block[col]     = gf_mul(a, 2) ^ gf_mul(b, 3) ^ c ^ d;
-      block[col + 1] = a ^ gf_mul(b, 2) ^ gf_mul(c, 3) ^ d;
-      block[col + 2] = a ^ b ^ gf_mul(c, 2) ^ gf_mul(d, 3);
-      block[col + 3] = gf_mul(a, 3) ^ b ^ c ^ gf_mul(d, 2);
-  }
-}
-void invert_mix_columns(unsigned char *block) {
-  for (int i = 0; i < 4; ++i) {
-      int col = i * 4;
-      unsigned char a = block[col];
-      unsigned char b = block[col + 1];
-      unsigned char c = block[col + 2];
-      unsigned char d = block[col + 3];
+    // Row 2 (shift left by 2)
+    tmp[2]  = state[10];
+    tmp[6]  = state[14];
+    tmp[10] = state[2];
+    tmp[14] = state[6];
 
-      block[col]     = gf_mul(a, 0x0e) ^ gf_mul(b, 0x0b) ^ gf_mul(c, 0x0d) ^ gf_mul(d, 0x09);
-      block[col + 1] = gf_mul(a, 0x09) ^ gf_mul(b, 0x0e) ^ gf_mul(c, 0x0b) ^ gf_mul(d, 0x0d);
-      block[col + 2] = gf_mul(a, 0x0d) ^ gf_mul(b, 0x09) ^ gf_mul(c, 0x0e) ^ gf_mul(d, 0x0b);
-      block[col + 3] = gf_mul(a, 0x0b) ^ gf_mul(b, 0x0d) ^ gf_mul(c, 0x09) ^ gf_mul(d, 0x0e);
-  }
+    // Row 3 (shift left by 3)
+    tmp[3]  = state[15];
+    tmp[7]  = state[3];
+    tmp[11] = state[7];
+    tmp[11] = state[11];
+
+    memcpy(state, tmp, BLOCK_SIZE);
 }
 
-// AddRoundKey
+// Inverse ShiftRows
+void invert_shift_rows(unsigned char *state) {
+    unsigned char tmp[BLOCK_SIZE];
+    // Row 0 (no shift)
+    tmp[0]  = state[0];
+    tmp[4]  = state[4];
+    tmp[8]  = state[8];
+    tmp[12] = state[12];
+
+    // Row 1 (shift right by 1)
+    tmp[1]  = state[13];
+    tmp[5]  = state[1];
+    tmp[9]  = state[5];
+    tmp[13] = state[9];
+
+    // Row 2 (shift right by 2)
+    tmp[2]  = state[10];
+    tmp[6]  = state[14];
+    tmp[10] = state[2];
+    tmp[14] = state[6];
+
+    // Row 3 (shift right by 3)
+    tmp[3]  = state[7];
+    tmp[7]  = state[11];
+    tmp[11] = state[15];
+    tmp[15] = state[3];
+
+    memcpy(state, tmp, BLOCK_SIZE);
+}
+
+// MixColumns
+void mix_columns(unsigned char *state) {
+    unsigned char tmp[BLOCK_SIZE];
+    for (int i = 0; i < 4; i++) {
+        tmp[i * 4]     = gf_mul(0x02, state[i * 4]) ^ gf_mul(0x03, state[i * 4 + 1]) ^ state[i * 4 + 2] ^ state[i * 4 + 3];
+        tmp[i * 4 + 1] = state[i * 4] ^ gf_mul(0x02, state[i * 4 + 1]) ^ gf_mul(0x03, state[i * 4 + 2]) ^ state[i * 4 + 3];
+        tmp[i * 4 + 2] = state[i * 4] ^ state[i * 4 + 1] ^ gf_mul(0x02, state[i * 4 + 2]) ^ gf_mul(0x03, state[i * 4 + 3]);
+        tmp[i * 4 + 3] = gf_mul(0x03, state[i * 4]) ^ state[i * 4 + 1] ^ state[i * 4 + 2] ^ gf_mul(0x02, state[i * 4 + 3]);
+    }
+    memcpy(state, tmp, BLOCK_SIZE);
+}
+
+// Inverse MixColumns
+void invert_mix_columns(unsigned char *state) {
+    unsigned char tmp[BLOCK_SIZE];
+    for (int i = 0; i < 4; i++) {
+        tmp[i * 4]     = gf_mul(0x0e, state[i * 4]) ^ gf_mul(0x0b, state[i * 4 + 1]) ^ gf_mul(0x0d, state[i * 4 + 2]) ^ gf_mul(0x09, state[i * 4 + 3]);
+        tmp[i * 4 + 1] = gf_mul(0x09, state[i * 4]) ^ gf_mul(0x0e, state[i * 4 + 1]) ^ gf_mul(0x0b, state[i * 4 + 2]) ^ gf_mul(0x0d, state[i * 4 + 3]);
+        tmp[i * 4 + 2] = gf_mul(0x0d, state[i * 4]) ^ gf_mul(0x09, state[i * 4 + 1]) ^ gf_mul(0x0e, state[i * 4 + 2]) ^ gf_mul(0x0b, state[i * 4 + 3]);
+        tmp[i * 4 + 3] = gf_mul(0x0b, state[i * 4]) ^ gf_mul(0x0d, state[i * 4 + 1]) ^ gf_mul(0x09, state[i * 4 + 2]) ^ gf_mul(0x0e, state[i * 4 + 3]);
+    }
+    memcpy(state, tmp, BLOCK_SIZE);
+}
+
+// Add Round Key
 void add_round_key(unsigned char *block, unsigned char *key) {
-  for (int i = 0; i < BLOCK_SIZE; ++i)
-      block[i] ^= key[i];
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+        block[i] ^= key[i];
+    }
 }
 
-// Encryption / Decryption
+// AES Encrypt Block
 unsigned char* aes_encrypt_block(unsigned char *plaintext, unsigned char *key) {
-  unsigned char *state = malloc(BLOCK_SIZE);
-  memcpy(state, plaintext, BLOCK_SIZE);
-  add_round_key(state, key);
+    unsigned char *round_keys = expand_key(key);
+    unsigned char *state = malloc(BLOCK_SIZE);
+    memcpy(state, plaintext, BLOCK_SIZE);
 
-  for (int round = 1; round < 10; ++round) {
-      sub_bytes(state);
-      shift_rows(state);
-      mix_columns(state);
-      add_round_key(state, key + round * BLOCK_SIZE);
-  }
+    add_round_key(state, round_keys); // Initial round key addition
 
-  sub_bytes(state);
-  shift_rows(state);
-  add_round_key(state, key + 10 * BLOCK_SIZE);
+    for (int round = 1; round <= NUM_ROUNDS; round++) {
+        sub_bytes(state);
+        shift_rows(state);
+        if (round < NUM_ROUNDS) {
+            mix_columns(state);
+        }
+        add_round_key(state, round_keys + round * BLOCK_SIZE);
+    }
 
-  return state;
+    free(round_keys);
+    return state; // Return the encrypted block
 }
 
+// AES Decrypt Block
 unsigned char* aes_decrypt_block(unsigned char *ciphertext, unsigned char *key) {
-  unsigned char *state = malloc(BLOCK_SIZE);
-  memcpy(state, ciphertext, BLOCK_SIZE);
-  add_round_key(state, key + 10 * BLOCK_SIZE);
+    unsigned char *round_keys = expand_key(key);
+    unsigned char *state = malloc(BLOCK_SIZE);
+    memcpy(state, ciphertext, BLOCK_SIZE);
 
-  for (int round = 9; round > 0; --round) {
-      invert_shift_rows(state);
-      invert_sub_bytes(state);
-      add_round_key(state, key + round * BLOCK_SIZE);
-      invert_mix_columns(state);
-  }
+    add_round_key(state, round_keys + NUM_ROUNDS * BLOCK_SIZE); // Initial round key addition
 
-  invert_shift_rows(state);
-  invert_sub_bytes(state);
-  add_round_key(state, key);
+    for (int round = NUM_ROUNDS - 1; round >= 0; round--) {
+        invert_shift_rows(state);
+        invert_sub_bytes(state);
+        add_round_key(state, round_keys + round * BLOCK_SIZE);
+        if (round > 0) {
+            invert_mix_columns(state);
+        }
+    }
 
-  return state;
+    free(round_keys);
+    return state; // Return the decrypted block
+}
+
+// Main function for testing
+int main() {
+    unsigned char key[BLOCK_SIZE] = {
+        0x2b, 0x7e, 0x15, 0x16,
+        0x28, 0xae, 0xd2, 0xa6,
+        0x24, 0x7b, 0x6b, 0x3b,
+        0x61, 0x0c, 0xd0, 0x3c
+    };
+
+    unsigned char plaintext[BLOCK_SIZE] = {
+        0x32, 0x88, 0x31, 0xe0,
+        0x43, 0x5a, 0x31, 0x37,
+        0xf6, 0x30, 0x98, 0x07,
+        0xa8, 0x8d, 0xa2, 0x34
+    };
+
+    unsigned char *ciphertext = aes_encrypt_block(plaintext, key);
+    unsigned char *decrypted = aes_decrypt_block(ciphertext, key);
+
+    printf("Ciphertext: ");
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+        printf("%02x ", ciphertext[i]);
+    }
+    printf("\n");
+
+    printf("Decrypted: ");
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+        printf("%02x ", decrypted[i]);
+    }
+    printf("\n");
+
+    free(ciphertext);
+    free(decrypted);
+    return 0;
 }

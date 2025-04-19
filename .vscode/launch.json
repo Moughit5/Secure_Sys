@@ -33,8 +33,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/Me&Me/Downloads/secure_sys/rijndael starter code",
-      "program": "c:/Users/Me&Me/Downloads/secure_sys/rijndael starter code/build/Debug/outDebug",
+      "cwd": "D:/secure_sys/rijndael starter code",
+      "program": "D:/secure_sys/rijndael starter code/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
