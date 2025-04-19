@@ -10,8 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  
-
+    runs-on: windows-latest  
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -20,19 +19,14 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: '3.13.3'  
-
     - name: Install dependencies
       run: |
         pip install pycryptodome pytest
 
-    - name: Install GCC for Windows
-      run: |
-        sudo apt-get install gcc-mingw-w64  # Install the required compiler
-
     - name: Compile C code
       run: |
-        x86_64-w64-mingw32-gcc -shared -o rijndael.dll rijndael.c
+        gcc -shared -o rijndael.dll rijndael.c  # Compile the DLL
 
     - name: Run tests
       run: |
-        python -m pytest -v  # Run your tests
+        python -m pytest -v
