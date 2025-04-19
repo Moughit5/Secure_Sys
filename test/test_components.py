@@ -1,7 +1,7 @@
 import ctypes
 import os
 
-rijndael = ctypes.CDLL(os.path.abspath("./rijndael.so"))
+rijndael = ctypes.CDLL(os.path.abspath("../rijndael.dll"))
 
 rijndael.sub_bytes.argtypes = [ctypes.POINTER(ctypes.c_ubyte)]
 rijndael.shift_rows.argtypes = [ctypes.POINTER(ctypes.c_ubyte)]
