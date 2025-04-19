@@ -42,7 +42,12 @@ jobs:
         gcc -shared rijndael.c -o rijndael.dll # Compile la DLL à la racine
 
 
-    - name: Run tests
+    - name: Run test_ae
+      working-directory: test
+      run: |
+          python test_ae.py
+
+    - name: Run test_components
       working-directory: test 
       run: |
-        python -m pytest -v
+        python test_components.py
