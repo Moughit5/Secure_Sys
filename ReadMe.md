@@ -23,8 +23,9 @@ This project provides a complete implementation of the AES-128 encryption algori
 - pytest (for running tests)
 - Sometimes the dll runs in 32bits so we need to make it in 64bits we should use 
 
-bash
-	>>>>x86_64-w64-mingw32-gcc -shared -o rijndael.dll rijndael.c
+```bash
+x86_64-w64-mingw32-gcc -shared -o rijndael.dll rijndael.c
+```
 
 ## Installation
 
