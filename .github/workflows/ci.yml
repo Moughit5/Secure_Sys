@@ -3,30 +3,46 @@ name: CI
 on:
   push:
     branches:
-      - main  
+      - main
   pull_request:
     branches:
-      - main 
+      - main
 
 jobs:
   build:
-    runs-on: windows-latest  
+    runs-on: windows-latest 
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
+
+    - name: Set up MSYS2 and GCC
+      uses: msys2/setup-msys2@v2
       with:
-        python-version: '3.13.3'  
+        msystem: mingw64 
+        update: true
+        install: >- 
+          mingw-w64-x86_64-gcc
+
+ 
+    - name: Set up Python 3.13
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13.3'
+        architecture: 'x64' 
+
     - name: Install dependencies
       run: |
         pip install pycryptodome pytest
 
-    - name: Compile C code
+ 
+    - name: Compile C code (rijndael.dll)
       run: |
-        gcc -shared -o rijndael.dll rijndael.c  # Compile the DLL
+        gcc -shared rijndael.c -o rijndael.dll # Compile la DLL à la racine
+
 
     - name: Run tests
+      working-directory: test 
       run: |
         python -m pytest -v
