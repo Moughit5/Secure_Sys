@@ -1,12 +1,25 @@
+/*
+ * Author: Abdelmoughit OUDINA
+ * Student Number: D24130820
+ *
+ * Description:
+ * This code implements the AES algorithm 
+ * in C for 128-bit encryption and decryption. It includes key expansion, 
+ * byte substitution, row shifting, column mixing, and round key addition.
+ */
+
 #include "rijndael.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-#define BLOCK_SIZE 16
-#define NUM_ROUNDS 10
+#define BLOCK_SIZE 16     // AES block size in bytes (128 bits)
+#define NUM_ROUNDS 10     // Number of rounds for AES-128
 
-// S-Box pour le chiffrement
+/* 
+ * Forward S-box for encryption
+ * Used in SubBytes transformation
+ */
 static const unsigned char sbox[256] = {
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
     0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
@@ -26,7 +39,10 @@ static const unsigned char sbox[256] = {
     0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
 };
 
-// S-Box inverse pour le déchiffrement
+/* 
+ * Inverse S-box for decryption
+ * Used in InvSubBytes transformation 
+ */
 static const unsigned char inv_sbox[256] = {
     0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xFB,
     0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87, 0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 0xCB,
@@ -46,13 +62,21 @@ static const unsigned char inv_sbox[256] = {
     0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D
 };
 
-// Rcon (constantes pour l'expansion de clé)
+/*
+ * Round constants for key expansion
+ * Used in Rcon step of key schedule
+ */
 static const unsigned char Rcon[11] = {
   0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
 };
 
 
-// Multiplication dans GF(2^8)
+/**
+ * Multiplies two numbers in GF(2^8) finite field
+ * @param a First operand
+ * @param b Second operand
+ * @return Result of multiplication in GF(2^8)
+ */
 static unsigned char gf_mul(unsigned char a, unsigned char b) {
     unsigned char p = 0;
     unsigned char hi_bit_set;
@@ -66,7 +90,12 @@ static unsigned char gf_mul(unsigned char a, unsigned char b) {
     return p;
 }
 
-// Expansion de clé
+/**
+ * Expands the 128-bit cipher key into 11 round keys (176 bytes)
+ * @param cipher_key The original 128-bit cipher key
+ * @return Pointer to expanded key schedule (176 bytes)
+ */
+
 unsigned char *expand_key(const unsigned char *cipher_key) {
   unsigned char *round_keys = malloc(176);
   if (!round_keys) return NULL;
@@ -102,8 +131,10 @@ unsigned char *expand_key(const unsigned char *cipher_key) {
   return round_keys;
 }
 
-
-// SubBytes
+/**
+ * SubBytes transformation for encryption
+ * @param block 16-byte block to transform
+ */
 void sub_bytes(unsigned char *block) {
     for (int i = 0; i < BLOCK_SIZE; i++) {
         block[i] = sbox[block[i]];
@@ -117,7 +148,11 @@ void invert_sub_bytes(unsigned char *block) {
     }
 }
 
-// ShiftRows
+/**
+ * Inverse SubBytes transformation for decryption
+ * @param block 16-byte block to transform
+ */
+
 void shift_rows(unsigned char *state) {
   unsigned char tmp[BLOCK_SIZE];
 
@@ -145,7 +180,11 @@ void shift_rows(unsigned char *state) {
 }
 
 
-// ShiftRows inverse
+/**
+ * Inverse ShiftRows transformation for decryption
+ * @param state 16-byte state matrix to transform
+ */
+
 void invert_shift_rows(unsigned char *state) {
   unsigned char tmp[BLOCK_SIZE];
 
@@ -173,7 +212,10 @@ void invert_shift_rows(unsigned char *state) {
 }
 
 
-// MixColumns
+/**
+ * MixColumns transformation for encryption
+ * @param state 16-byte state matrix to transform
+ */
 void mix_columns(unsigned char *state) {
     unsigned char tmp[16];
     for (int i = 0; i < 4; i++) {
@@ -185,7 +227,10 @@ void mix_columns(unsigned char *state) {
     memcpy(state, tmp, 16);
 }
 
-// MixColumns inverse
+/**
+ * Inverse MixColumns transformation for decryption
+ * @param state 16-byte state matrix to transform
+ */
 void invert_mix_columns(unsigned char *state) {
     unsigned char tmp[16];
     for (int i = 0; i < 4; i++) {
@@ -197,14 +242,23 @@ void invert_mix_columns(unsigned char *state) {
     memcpy(state, tmp, 16);
 }
 
-// AddRoundKey
+/**
+ * AddRoundKey transformation (shared between encryption and decryption)
+ * @param block 16-byte block to transform
+ * @param round_key 16-byte round key to add
+ */
 void add_round_key(unsigned char *block, const unsigned char *key) {
     for (int i = 0; i < BLOCK_SIZE; i++) {
         block[i] ^= key[i];
     }
 }
 
-// Chiffrement AES
+/**
+ * Encrypts a 128-bit block using AES-128
+ * @param plaintext 16-byte plaintext block
+ * @param key 16-byte encryption key
+ * @return Pointer to 16-byte ciphertext block (allocated on heap)
+ */
 unsigned char *aes_encrypt_block(const unsigned char *plaintext, const unsigned char *key) {
     if (!plaintext || !key) return NULL;
 
@@ -240,7 +294,13 @@ unsigned char *aes_encrypt_block(const unsigned char *plaintext, const unsigned 
     return state;
 }
 
-// Déchiffrement AES
+
+/**
+ * Decrypts a 128-bit block using AES-128
+ * @param ciphertext 16-byte ciphertext block
+ * @param key 16-byte decryption key
+ * @return Pointer to 16-byte plaintext block (allocated on heap)
+ */
 unsigned char *aes_decrypt_block(const unsigned char *ciphertext, const unsigned char *key) {
     if (!ciphertext || !key) return NULL;
 
