@@ -46,6 +46,12 @@ Run the test_components:
 ```bash
 python test_components.py 
 ```
+
+Run the test:
+
+```bash
+python test_ae.py    
+```
 Run the test:
 
 ```bash
