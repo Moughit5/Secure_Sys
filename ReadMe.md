@@ -33,20 +33,32 @@ x86_64-w64-mingw32-gcc -shared -o rijndael.dll rijndael.c
 Running Tests
 Install Python dependencies:
 
-bash
+```bash
 pip install pycryptodome pytest
-
+```
 Run all the tests:
 
-bash
+```bash
 python -m pytest -v
-
+```
 Run the test_components:
 
-bash
+```bash
 python test_components.py 
-
+```
 Run the test:
 
-bash
+```bash
 python test.py    
+```
+## Documentation
+
+Full code documentation is available in:
+
+Header file (rijndael.c)
+
+Test script (test_ae.py)
+
+Inline comments throughout implementation
+
+#### Thank YOU For Reading ME <3
