@@ -9,7 +9,7 @@ This project provides a complete implementation of the AES-128 encryption algori
 - Pure C implementation of AES-128 (Rijndael algorithm)
 - ECB mode encryption/decryption
 - Complete key expansion implementation
-- Python test suite with:
+- Python tests suite with:
   - Known answer tests (NIST FIPS-197 vectors)
   - Random data roundtrip tests
   - Cross-validation with PyCryptodome
@@ -24,7 +24,7 @@ This project provides a complete implementation of the AES-128 encryption algori
 - Sometimes the dll runs in 32bits so we need to make it in 64bits we should use 
 
 bash
-x86_64-w64-mingw32-gcc -shared -o rijndael.dll rijndael.c
+	>>>>x86_64-w64-mingw32-gcc -shared -o rijndael.dll rijndael.c
 
 ## Installation
 
