@@ -1,77 +1,83 @@
+import os
 import ctypes
-import random
+import pytest
+from Crypto.Cipher import AES as PyAES
 
-# Path to the compiled 32-bit DLL
+# Load DLL
 dll_path = r"D:\secure_sys\rijndael starter code\rijndael.dll"
-rijndael = ctypes.CDLL(dll_path)
+lib = ctypes.CDLL(dll_path)
 
-# Define argument and return types for AES functions
-rijndael.aes_encrypt_block.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.POINTER(ctypes.c_ubyte)]
-rijndael.aes_encrypt_block.restype = ctypes.POINTER(ctypes.c_ubyte)
+# Set function signatures
+lib.aes_encrypt_block.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.POINTER(ctypes.c_ubyte)]
+lib.aes_encrypt_block.restype = ctypes.POINTER(ctypes.c_ubyte)
 
-rijndael.aes_decrypt_block.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.POINTER(ctypes.c_ubyte)]
-rijndael.aes_decrypt_block.restype = ctypes.POINTER(ctypes.c_ubyte)
+lib.aes_decrypt_block.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.POINTER(ctypes.c_ubyte)]
+lib.aes_decrypt_block.restype = ctypes.POINTER(ctypes.c_ubyte)
 
-def random_block():
-    """Generate a random 16-byte block."""
-    return bytes([random.randint(0, 255) for _ in range(16)])
+# Helpers
+def ptr_to_bytes(ptr, length=16):
+    return bytes((ptr[i] for i in range(length)))
 
-def test_full_aes():
-    """Test AES encryption and decryption with random plaintext and keys."""
-    for i in range(3):
-        plaintext = random_block()
-        key = random_block()
+def make_buffers():
+    data = os.urandom(16)
+    buf = (ctypes.c_ubyte * 16)(*data)  # Create a c_ubyte array
+    original = bytes(buf)
+    return buf, original
 
-        pt_buf = (ctypes.c_ubyte * 16)(*plaintext)
-        key_buf = (ctypes.c_ubyte * 16)(*key)
+def make_key():
+    key = os.urandom(16)
+    return (ctypes.c_ubyte * 16)(*key), key  # Create a c_ubyte array for the key
 
-        # Encrypt the plaintext
-        cipher_ptr = rijndael.aes_encrypt_block(pt_buf, key_buf)
-        cipher = ctypes.string_at(cipher_ptr, 16)
+def to_c_buffer(block):
+    return (ctypes.c_ubyte * 16)(*block)
 
-        # Decrypt the ciphertext
-        ct_buf = (ctypes.c_ubyte * 16).from_buffer_copy(cipher)
-        plain_ptr = rijndael.aes_decrypt_block(ct_buf, key_buf)
-        decrypted = ctypes.string_at(plain_ptr, 16)
+# Tests
 
-        print(f"Test {i+1}")
-        print("Plaintext :", plaintext.hex())
-        print("Key       :", key.hex())
-        print("Cipher    :", cipher.hex())
-        print("Decrypted :", decrypted.hex())
+def test_known_vector():
+    key = bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
+    plaintext = bytes.fromhex("3243f6a8885a308d313198a2e0370734")
+    expected_ciphertext = bytes.fromhex("3925841d02dc09fbdc118597196a0b32")
 
-        assert decrypted == plaintext, "Decryption does not match original!"
+    pt_buf = to_c_buffer(plaintext)
+    key_buf = to_c_buffer(key)
 
-def test_known_values():
-    """Test AES encryption and decryption with known values."""
-    plaintext = bytes([0x32, 0x88, 0x31, 0xe0, 0x43, 0x5a, 0x31, 0x37,
-                       0xf6, 0x30, 0x98, 0x07, 0xa8, 0x8d, 0xa2, 0x34])
-    key = bytes([0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-                 0x24, 0x7b, 0x6b, 0x3b, 0x61, 0x0c, 0xd0, 0x3c])
-    
-    expected_ciphertext = bytes([0x39, 0x25, 0x84, 0x1d, 0x02, 0xdc, 0x09, 0xfb,
-                                  0xdc, 0x11, 0x85, 0x97, 0x19, 0x6a, 0x0b, 0x32])
+    cipher_ptr = lib.aes_encrypt_block(pt_buf, key_buf)
+    actual_cipher = ptr_to_bytes(cipher_ptr)
 
-    pt_buf = (ctypes.c_ubyte * 16)(*plaintext)
-    key_buf = (ctypes.c_ubyte * 16)(*key)
+    assert actual_cipher == expected_ciphertext, f"Expected {expected_ciphertext.hex()} but got {actual_cipher.hex()}"
 
-    # Encrypt the plaintext
-    cipher_ptr = rijndael.aes_encrypt_block(pt_buf, key_buf)
-    cipher = ctypes.string_at(cipher_ptr, 16)
+    # Decrypt and check
+    ct_buf = to_c_buffer(actual_cipher)
+    plain_ptr = lib.aes_decrypt_block(ct_buf, key_buf)
+    decrypted = ptr_to_bytes(plain_ptr)
 
-    print("Expected Ciphertext:", expected_ciphertext.hex())
-    print("Actual Ciphertext  :", cipher.hex())
+    assert decrypted == plaintext, "Decryption does not match original plaintext"
 
-    assert cipher == expected_ciphertext, "Encryption does not match expected ciphertext!"
+@pytest.mark.parametrize("i", range(3))
+def test_random_encrypt_decrypt(i):
+    buf, original = make_buffers()
+    key_buf, key_raw = make_key()
 
-    # Decrypt the ciphertext
-    ct_buf = (ctypes.c_ubyte * 16).from_buffer_copy(cipher)
-    plain_ptr = rijndael.aes_decrypt_block(ct_buf, key_buf)
-    decrypted = ctypes.string_at(plain_ptr, 16)
+    # Encrypt
+    enc_ptr = lib.aes_encrypt_block(buf, key_buf)
+    cipher = ptr_to_bytes(enc_ptr)
 
-    print("Decrypted Plaintext:", decrypted.hex())
-    assert decrypted == plaintext, "Decryption does not match original!"
+    # Decrypt
+    ct_buf = to_c_buffer(cipher)
+    dec_ptr = lib.aes_decrypt_block(ct_buf, key_buf)
+    decrypted = ptr_to_bytes(dec_ptr)
 
-if __name__ == "__main__":
-    test_known_values()  # Test with known values
-    test_full_aes()      # Test with random values
+    assert decrypted == original, "Decrypted block doesn't match original"
+
+def test_compare_with_pycryptodome():
+    buf, original = make_buffers()
+    key_buf, key_raw = make_key()
+
+    # DLL Encrypt
+    enc_ptr = lib.aes_encrypt_block(buf, key_buf)
+    c_cipher = ptr_to_bytes(enc_ptr)
+
+    # Python Encrypt
+    py_cipher = PyAES.new(key_raw, PyAES.MODE_ECB).encrypt(original)
+
+    assert c_cipher == py_cipher, "C DLL encryption and Python encryption do not match"
